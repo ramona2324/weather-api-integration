@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather App</title>
+    <link rel="stylesheet" href="/css/tailwind.min.css">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Leaflet CSS and JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+    <style>
+        /* Ensure map has proper dimensions */
+        #map {
+            height: 400px !important;
+            width: 100% !important;
+            min-height: 400px;
+        }
+
+        /* Loading spinner */
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Weather overlay styles */
+        .weather-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            max-width: 300px;
+            max-height: 380px;
+            overflow-y: auto;
+        }
+
+        .map-container {
+            position: relative;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-blue-400 via-blue-500 to-blue-600">
+<div id="app">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-bold mb-2">
+                <i class="fas fa-cloud-sun mr-3"></i>Weather App
+            </h1>
+            <p class="text-lg">Get current weather for any location</p>
+        </header>
+
+        <!-- Search Section -->
+        <div class="max-w-md mx-auto mb-8">
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Search Location</h2>
+                <div class="relative">
+                    <input type="search"
+                           v-model="searchQuery"
+                           @keyup.enter="searchLocations"
+                           placeholder="Enter city name..."
+                           class="w-full pl-4 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-base">
+                </div>
+            </div>
+        </div>
+
+        <!-- Interactive Map Section -->
+        <div class="max-w-6xl mx-auto mb-8">
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">
+                    <i class="fas fa-map-marker-alt mr-2 text-blue-500"></i>
+                    Click on the map to get weather
+                </h2>
+                <div class="map-container">
+                    <div id="map" class="w-full h-96 rounded-lg border-2 border-gray-200"></div>
+
+                    <!-- Weather Overlay on Map -->
+                    <div v-if="currentWeather" class="weather-overlay">
+                        <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+                            <!-- Weather Header -->
+                            <div class="bg-gradient-to-r from-blue-500 to-blue-600">
+                                <div class="flex items-center justify-between">
+                                    <button @click="clearWeather"
+                                            class="bg-white bg-opacity-20 hover:bg-opacity-30 px-2 py-1 rounded text-sm transition-all">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Weather Content -->
+                            <div class="p-4">
+                                <!-- Main Weather Info -->
+                                <div class="text-center mb-4">
+                                    <h3 class="text-lg font-bold">{{ currentWeather.name }}</h3>
+                                    <p class="text-sm">{{ currentWeather.sys?.country }}</p>
+                                    <div class="flex items-center justify-center mb-2">
+                                        <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                                            <i :class="getWeatherIcon(currentWeather.weather?.[0]?.main)" class="text-lg text-blue-600"></i>
+                                        </div>
+                                        <div class="ml-3">
+                                            <div class="text-2xl font-bold text-gray-800">{{ formatTemperature(currentWeather.main?.temp) }}</div>
+                                            <div class="text-sm text-gray-600 capitalize">{{ currentWeather.weather?.[0]?.description }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Weather Details -->
+                                <div class="space-y-2 text-sm">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-gray-600">Feels like</span>
+                                        <span class="font-medium">{{ formatTemperature(currentWeather.main?.feels_like) }}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-gray-600">Humidity</span>
+                                        <span class="font-medium">{{ currentWeather.main?.humidity }}%</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-gray-600">Pressure</span>
+                                        <span class="font-medium">{{ currentWeather.main?.pressure }} hPa</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-gray-600">Wind Speed</span>
+                                        <span class="font-medium">{{ currentWeather.wind?.speed }} m/s</span>
+                                    </div>
+                                </div>
+
+                                <!-- Temperature Range -->
+                                <div class="mt-3 p-3 bg-gray-50 rounded-lg">
+                                    <div class="flex justify-between items-center text-sm">
+                                        <div class="text-center">
+                                            <div class="text-xs text-gray-600">Min</div>
+                                            <div class="font-semibold text-blue-600">{{ formatTemperature(currentWeather.main?.temp_min) }}</div>
+                                        </div>
+                                        <div class="text-center">
+                                            <div class="text-xs text-gray-600">Max</div>
+                                            <div class="font-semibold text-red-600">{{ formatTemperature(currentWeather.main?.temp_max) }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Last Updated -->
+                                <div class="mt-2 text-center text-xs text-gray-500">
+                                    Updated: {{ lastUpdated }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="text-sm text-gray-600 mt-2">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Click anywhere on the map to get weather data for that location
+                </p>
+            </div>
+        </div>
+
+        <!-- Weather Details Below Map (Alternative Display) -->
+        <div v-if="currentWeather" class="max-w-4xl mx-auto mb-8">
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-xl font-semibold text-gray-800">
+                        <i class="fas fa-thermometer-half mr-2 text-blue-500"></i>
+                        Detailed Weather Information
+                    </h2>
+                    <button
+                            @click="clearWeather"
+                            class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition-colors"
+                    >
+                        <i class="fas fa-times mr-2"></i>Clear
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- Location Info -->
+                    <div class="bg-blue-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-gray-800 mb-2">
+                            <i class="fas fa-map-marker-alt mr-2 text-blue-500"></i>Location
+                        </h3>
+                        <p class="text-lg font-medium">{{ currentWeather.name }}</p>
+                        <p class="text-sm text-gray-600">{{ currentWeather.sys?.country }}</p>
+                    </div>
+
+                    <!-- Temperature Info -->
+                    <div class="bg-orange-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-gray-800 mb-2">
+                            <i class="fas fa-thermometer-half mr-2 text-orange-500"></i>Temperature
+                        </h3>
+                        <p class="text-2xl font-bold text-orange-600">{{ formatTemperature(currentWeather.main?.temp) }}</p>
+                        <p class="text-sm text-gray-600">Feels like {{ formatTemperature(currentWeather.main?.feels_like) }}</p>
+                        <div class="flex justify-between mt-2 text-sm">
+                            <span>Min: {{ formatTemperature(currentWeather.main?.temp_min) }}</span>
+                            <span>Max: {{ formatTemperature(currentWeather.main?.temp_max) }}</span>
+                        </div>
+                    </div>
+
+                    <!-- Weather Condition -->
+                    <div class="bg-green-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-gray-800 mb-2">
+                            <i :class="getWeatherIcon(currentWeather.weather?.[0]?.main)" class="mr-2 text-green-500"></i>Condition
+                        </h3>
+                        <p class="text-lg font-medium capitalize">{{ currentWeather.weather?.[0]?.description }}</p>
+                        <p class="text-sm text-gray-600">{{ currentWeather.weather?.[0]?.main }}</p>
+                    </div>
+
+                    <!-- Humidity & Pressure -->
+                    <div class="bg-purple-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-gray-800 mb-2">
+                            <i class="fas fa-tint mr-2 text-purple-500"></i>Humidity & Pressure
+                        </h3>
+                        <div class="space-y-1">
+                            <div class="flex justify-between">
+                                <span class="text-sm text-gray-600">Humidity:</span>
+                                <span class="font-medium">{{ currentWeather.main?.humidity }}%</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-sm text-gray-600">Pressure:</span>
+                                <span class="font-medium">{{ currentWeather.main?.pressure }} hPa</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Wind Info -->
+                    <div class="bg-cyan-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-gray-800 mb-2">
+                            <i class="fas fa-wind mr-2 text-cyan-500"></i>Wind
+                        </h3>
+                        <p class="text-lg font-medium">{{ currentWeather.wind?.speed }} m/s</p>
+                        <p class="text-sm text-gray-600">Wind Speed</p>
+                    </div>
+
+                    <!-- Visibility -->
+                    <div class="bg-yellow-50 p-4 rounded-lg">
+                        <h3 class="font-semibold text-gray-800 mb-2">
+                            <i class="fas fa-eye mr-2 text-yellow-500"></i>Visibility
+                        </h3>
+                        <p class="text-lg font-medium">{{ formatVisibility(currentWeather.visibility) }}</p>
+                        <p class="text-sm text-gray-600">{{ lastUpdated }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div v-if="loading" class="text-center mb-8">
+            <div class="loading-spinner mx-auto"></div>
+            <p class="text-white mt-2">Loading...</p>
+        </div>
+
+        <!-- Error Message -->
+        <div v-if="error" class="max-w-md mx-auto mb-8">
+            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg">
+                <i class="fas fa-exclamation-triangle mr-2"></i>
+                <span>{{ error }}</span>
+            </div>
+        </div>
+
+        <!-- Demo Mode Notice -->
+        <div v-if="!apiAvailable" class="max-w-md mx-auto mb-8">
+            <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded-lg">
+                <i class="fas fa-info-circle mr-2"></i>
+                <span>Demo mode: API endpoints not available. Click anywhere on the map to see demo weather data.</span>
+            </div>
+        </div>
+
+        <!-- Locations List -->
+        <div v-if="locations.length > 0 && !currentWeather" class="max-w-4xl mx-auto mb-8">
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">Select a Location</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div v-for="location in paginatedLocations"
+                            :key="location.id || location.name"
+                            @click="getWeather(location)"
+                            class="p-4 border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition-all">
+                        <h3 class="font-medium text-gray-800">{{ location.name }}</h3>
+                        <p class="text-sm text-gray-600">{{ location.country || location.region }}</p>
+                        <p class="text-xs text-gray-500">{{ formatCoordinates(location.lat, location.lon) }}</p>
+                    </div>
+                </div>
+
+                <!-- Pagination -->
+                <div v-if="locations.length > itemsPerPage" class="mt-6 flex justify-center items-center space-x-2">
+                    <button
+                            @click="previousPage"
+                            :disabled="currentPage === 1"
+                            class="px-3 py-2 bg-gray-200 text-gray-600 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+
+                    <span class="px-4 py-2 text-gray-700">
+                        Page {{ currentPage }} of {{ totalPages }}
+                    </span>
+
+                    <button
+                            @click="nextPage"
+                            :disabled="currentPage === totalPages"
+                            class="px-3 py-2 bg-gray-200 text-gray-600 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    console.log('Starting to load Vue app...');
+
+    // Check if Leaflet is loaded
+    if (typeof L === 'undefined') {
+        console.error('Leaflet is not loaded!');
+    } else {
+        console.log('Leaflet loaded successfully');
+    }
+
+    // Check if Vue is loaded
+    if (typeof Vue === 'undefined') {
+        console.error('Vue is not loaded!');
+    } else {
+        console.log('Vue loaded successfully');
+    }
+
+    const { createApp } = Vue;
+
+    createApp({
+        data() {
+            return {
+                searchQuery: '',
+                locations: [],
+                currentWeather: null,
+                loading: false,
+                error: '',
+                currentPage: 1,
+                itemsPerPage: 6,
+                lastUpdated: '',
+                map: null,
+                currentMarker: null,
+                apiAvailable: true
+            }
+        },
+        computed: {
+            paginatedLocations() {
+                const start = (this.currentPage - 1) * this.itemsPerPage;
+                const end = start + this.itemsPerPage;
+                return this.locations.slice(start, end);
+            },
+            totalPages() {
+                return Math.ceil(this.locations.length / this.itemsPerPage);
+            }
+        },
+        mounted() {
+            console.log('Vue app mounted, initializing map...');
+            this.$nextTick(() => {
+                this.initMap();
+            });
+        },
+        methods: {
+            initMap() {
+                console.log('Initializing map...');
+
+                // Check if the map div exists
+                const mapDiv = document.getElementById('map');
+                if (!mapDiv) {
+                    console.error('Map div not found!');
+                    return;
+                }
+
+                try {
+                    // Initialize map centered on a default location (London)
+                    this.map = L.map('map').setView([51.505, -0.09], 2);
+                    console.log('Map initialized successfully');
+
+                    // Add OpenStreetMap tiles
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                        maxZoom: 18
+                    }).addTo(this.map);
+
+                    console.log('Tiles added to map');
+
+                    // Add click event listener
+                    this.map.on('click', async (e) => {
+                        console.log('Map clicked at:', e.latlng);
+                        const { lat, lng } = e.latlng;
+
+                        // Remove previous marker if it exists
+                        if (this.currentMarker) {
+                            this.map.removeLayer(this.currentMarker);
+                        }
+
+                        // Add new marker
+                        this.currentMarker = L.marker([lat, lng])
+                            .addTo(this.map)
+                            .bindPopup('Getting weather data...')
+                            .openPopup();
+
+                        // Get weather data for the clicked location
+                        await this.getWeatherByCoordinates(lat, lng);
+                    });
+
+                    // Try to get user's current location
+                    this.getCurrentLocation();
+
+                } catch (error) {
+                    console.error('Error initializing map:', error);
+                }
+            },
+
+            getCurrentLocation() {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                            const { latitude, longitude } = position.coords;
+                            this.map.setView([latitude, longitude], 10);
+
+                            // Add marker for current location
+                            L.marker([latitude, longitude])
+                                .addTo(this.map)
+                                .bindPopup('<b>Your current location</b>')
+                                .openPopup();
+                        },
+                        (error) => {
+                            console.log('Geolocation error:', error);
+                            // Fallback to default location if geolocation fails
+                        }
+                    );
+                }
+            },
+
+            nextPage() {
+                if (this.currentPage < this.totalPages) {
+                    this.currentPage++;
+                }
+            },
+
+            previousPage() {
+                if (this.currentPage > 1) {
+                    this.currentPage--;
+                }
+            },
+
+            async searchLocations() {
+                if (!this.searchQuery.trim()) return;
+
+                this.loading = true;
+                this.error = '';
+                this.locations = [];
+                this.currentPage = 1;
+
+                try {
+                    const response = await fetch(`/api/locations/search?q=${encodeURIComponent(this.searchQuery)}`);
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+
+                    // Add debugging logs here
+                    console.log('API Response:', data);
+                    console.log('Locations array:', data.locations);
+                    console.log('Data type:', typeof data);
+                    console.log('Is data an array?', Array.isArray(data));
+                    console.log('data.data:', data.data);
+                    console.log('data.locations:', data.locations);
+
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+
+                    this.locations = data.data?.locations || data.locations || [];
+
+                    if (this.locations.length === 0) {
+                        this.error = 'No locations found. Please try a different search term.';
+                    }
+                } catch (err) {
+                    console.error('Error searching locations:', err);
+                    this.error = err.message || 'Failed to search locations. Please try again.';
+                } finally {
+                    this.loading = false;
+                }
+            },
+
+            getDemoLocations(query) {
+                const demoData = [
+                    { name: 'London', country: 'United Kingdom', lat: 51.5074, lon: -0.1278 },
+                    { name: 'Paris', country: 'France', lat: 48.8566, lon: 2.3522 },
+                    { name: 'New York', country: 'United States', lat: 40.7128, lon: -74.0060 },
+                    { name: 'Tokyo', country: 'Japan', lat: 35.6762, lon: 139.6503 },
+                    { name: 'Sydney', country: 'Australia', lat: -33.8688, lon: 151.2093 },
+                    { name: 'Manila', country: 'Philippines', lat: 14.5995, lon: 120.9842 }
+                ];
+
+                if (query) {
+                    return demoData.filter(loc =>
+                        loc.name.toLowerCase().includes(query.toLowerCase()) ||
+                        loc.country.toLowerCase().includes(query.toLowerCase())
+                    );
+                }
+                return demoData;
+            },
+
+            async getWeather(location) {
+                await this.getWeatherByCoordinates(location.lat, location.lon);
+            },
+
+            async getWeatherByCoordinates(lat, lon) {
+                this.loading = true;
+                this.error = '';
+
+                try {
+                    const response = await fetch(`/api/weather/coordinates?lat=${lat}&lon=${lon}`);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+
+                    this.currentWeather = data.weather;
+                    this.lastUpdated = new Date().toLocaleString();
+
+                    // Update marker popup if it exists
+                    if (this.currentMarker) {
+                        const temp = this.formatTemperature(this.currentWeather.main?.temp);
+                        const desc = this.currentWeather.weather?.[0]?.description || 'Unknown';
+                        this.currentMarker.bindPopup(`
+                        <div class="text-center">
+                            <strong>${this.currentWeather.name}</strong><br>
+                            <span class="text-lg">${temp}</span><br>
+                            <span class="capitalize">${desc}</span>
+                        </div>
+                    `).openPopup();
+                    }
+
+                } catch (err) {
+                    console.error('Error fetching weather:', err);
+                    this.apiAvailable = false;
+
+                    // Generate demo weather data
+                    this.currentWeather = this.generateDemoWeather(lat, lon);
+                    this.lastUpdated = new Date().toLocaleString();
+                    this.error = '';
+
+                    // Update marker popup with demo data
+                    if (this.currentMarker) {
+                        const temp = this.formatTemperature(this.currentWeather.main?.temp);
+                        const desc = this.currentWeather.weather?.[0]?.description || 'Unknown';
+                        this.currentMarker.bindPopup(`
+                        <div class="text-center">
+                            <strong>${this.currentWeather.name}</strong><br>
+                            <span class="text-lg">${temp}</span><br>
+                            <span class="capitalize">${desc}</span><br>
+                            <small>(Demo data)</small>
+                        </div>
+                    `).openPopup();
+                    }
+                } finally {
+                    this.loading = false;
+                }
+            },
+
+            generateDemoWeather(lat, lon) {
+                const weatherTypes = [
+                    { main: 'Clear', description: 'clear sky', icon: 'fas fa-sun' },
+                    { main: 'Clouds', description: 'few clouds', icon: 'fas fa-cloud' },
+                    { main: 'Rain', description: 'light rain', icon: 'fas fa-cloud-rain' },
+                    { main: 'Snow', description: 'light snow', icon: 'fas fa-snowflake' }
+                ];
+
+                const randomWeather = weatherTypes[Math.floor(Math.random() * weatherTypes.length)];
+                const baseTemp = Math.random() * 30 + 5; // 5-35°C
+
+                return {
+                    name: `Location (${lat.toFixed(2)}, ${lon.toFixed(2)})`,
+                    weather: [randomWeather],
+                    main: {
+                        temp: baseTemp,
+                        feels_like: baseTemp + (Math.random() * 4 - 2),
+                        temp_min: baseTemp - Math.random() * 5,
+                        temp_max: baseTemp + Math.random() * 5,
+                        pressure: Math.floor(Math.random() * 100 + 1000),
+                        humidity: Math.floor(Math.random() * 100)
+                    },
+                    wind: {
+                        speed: Math.random() * 10
+                    },
+                    visibility: Math.floor(Math.random() * 10000 + 5000),
+                    sys: {
+                        country: 'DEMO'
+                    }
+                };
+            },
+
+            clearWeather() {
+                this.currentWeather = null;
+                this.error = '';
+                if (this.currentMarker) {
+                    this.map.removeLayer(this.currentMarker);
+                    this.currentMarker = null;
+                }
+                // Reset locations if a search query exists
+                if (this.searchQuery) {
+                    this.searchLocations();
+                }
+            },
+
+            formatTemperature(temp) {
+                return temp ? `${Math.round(temp)}°C` : 'N/A';
+            },
+
+            formatCoordinates(lat, lon) {
+                return lat && lon ? `${lat.toFixed(2)}, ${lon.toFixed(2)}` : 'N/A';
+            },
+
+            formatVisibility(visibility) {
+                return visibility ? `${(visibility / 1000).toFixed(1)} km` : 'N/A';
+            },
+
+            getWeatherIcon(weatherMain) {
+                const iconMap = {
+                    'Clear': 'fas fa-sun',
+                    'Clouds': 'fas fa-cloud',
+                    'Rain': 'fas fa-cloud-rain',
+                    'Drizzle': 'fas fa-cloud-rain',
+                    'Thunderstorm': 'fas fa-bolt',
+                    'Snow': 'fas fa-snowflake',
+                    'Mist': 'fas fa-smog',
+                    'Fog': 'fas fa-smog',
+                    'Haze': 'fas fa-smog'
+                };
+                return iconMap[weatherMain] || 'fas fa-cloud';
+            }
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>

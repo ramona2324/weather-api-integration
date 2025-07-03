@@ -1,8 +1,14 @@
 import { Request, Response } from 'express';
 import { WeatherService } from '../services/WeatherService';
+import { Logger } from '../utils/Logger';
 
 export class WeatherController {
     private weatherService: WeatherService | null = null;
+    private logger: Logger;
+
+    constructor() {
+        this.logger = new Logger('WeatherController'); // Provide the context
+    }
 
     private getWeatherService(): WeatherService {
         if (!this.weatherService) {
@@ -29,11 +35,11 @@ export class WeatherController {
 
             res.status(200).json({
                 success: true,
-                data: weatherData
+                weather: weatherData
             });
 
         } catch (error) {
-            console.error('Weather Controller Error:', error);
+            this.logger.error('Weather Controller Error:', { error });
 
             res.status(500).json({
                 error: 'Failed to fetch weather data',
@@ -71,11 +77,11 @@ export class WeatherController {
 
             res.status(200).json({
                 success: true,
-                data: weatherData
+                weather: weatherData
             });
 
         } catch (error) {
-            console.error('Weather Controller Error:', error);
+            this.logger.error('Weather Controller Error:', { error });
 
             res.status(500).json({
                 error: 'Failed to fetch weather data',

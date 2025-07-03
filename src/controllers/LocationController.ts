@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { LocationService } from '../services/LocationService';
 
+
 export class LocationController {
     private locationService: LocationService;
 
@@ -65,6 +66,65 @@ export class LocationController {
 
             res.status(500).json({
                 error: 'Failed to search locations',
+                message: error instanceof Error ? error.message : 'Unknown error occurred'
+            });
+        }
+    }
+
+    async reverseGeocode(req: Request, res: Response): Promise<void> {
+        try {
+            const { lat, lon } = req.query;
+
+            if (!lat || !lon) {
+                res.status(400).json({
+                    error: 'Latitude and longitude parameters are required',
+                    message: 'Please provide both lat and lon query parameters'
+                });
+                return;
+            }
+
+            const latitude = parseFloat(lat as string);
+            const longitude = parseFloat(lon as string);
+
+            if (isNaN(latitude) || isNaN(longitude)) {
+                res.status(400).json({
+                    error: 'Invalid coordinates',
+                    message: 'Latitude and longitude must be valid numbers'
+                });
+                return;
+            }
+
+            // Validate coordinate ranges
+            if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+                res.status(400).json({
+                    error: 'Invalid coordinate range',
+                    message: 'Latitude must be between -90 and 90, longitude between -180 and 180'
+                });
+                return;
+            }
+
+            const location = await this.locationService.getLocationByCoordinates(latitude, longitude);
+
+            if (!location) {
+                res.status(404).json({
+                    error: 'Location not found',
+                    message: 'No location found for the provided coordinates'
+                });
+                return;
+            }
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    location
+                }
+            });
+
+        } catch (error) {
+            console.error('Reverse Geocode Error:', error);
+
+            res.status(500).json({
+                error: 'Failed to reverse geocode coordinates',
                 message: error instanceof Error ? error.message : 'Unknown error occurred'
             });
         }

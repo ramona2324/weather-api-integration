@@ -23,4 +23,9 @@ router.get('/locations/search', (req, res) => {
     controller.searchLocations(req, res);
 });
 
+router.get('/reverse', (req, res) => {
+    const controller = getLocationController();
+    controller.reverseGeocode(req, res);
+});
+
 export default router;

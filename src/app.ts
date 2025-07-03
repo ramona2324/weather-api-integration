@@ -51,6 +51,7 @@ app.use(
                     "https://a.tile.openstreetmap.org",
                     "https://b.tile.openstreetmap.org",
                     "https://c.tile.openstreetmap.org",
+                    "https://nominatim.openstreetmap.org" // added to allow Nominatim API
                 ],
                 fontSrc: [
                     "'self'",
